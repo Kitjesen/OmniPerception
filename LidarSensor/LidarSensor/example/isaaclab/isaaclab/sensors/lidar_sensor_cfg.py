@@ -27,7 +27,7 @@ class LidarSensorCfg(RayCasterCfg):
     """
 
     class_type: type = LidarSensor
-    ray_alignment: Literal["base", "yaw", "world"] = "yaw"
+    ray_alignment: Literal["base", "yaw", "world"] = "base"
     # LiDAR-specific timing parameters
     update_frequency: float = 50.0
     """LiDAR update frequency in Hz. Defaults to 50.0 Hz."""
@@ -50,8 +50,8 @@ class LidarSensorCfg(RayCasterCfg):
     random_distance_noise: float = 0.03
     """Standard deviation of Gaussian noise added to distances. Defaults to 0.03m."""
     
-    random_angle_noise: float = 0.15 * 3.14159 / 180
-    """Standard deviation of angular noise in radians. Defaults to 0.15 degrees."""
+    random_angle_noise: float = 0.0
+    """Angular noise is not implemented; nonzero values are rejected."""
     
     pixel_dropout_prob: float = 0.01
     """Probability of pixel dropout (no return). Defaults to 0.01."""

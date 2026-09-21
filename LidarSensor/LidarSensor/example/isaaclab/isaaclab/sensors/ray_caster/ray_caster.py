@@ -23,11 +23,11 @@ from pxr import UsdGeom, UsdPhysics
 import isaaclab.sim as sim_utils
 from isaaclab.markers import VisualizationMarkers
 from isaaclab.terrains.trimesh.utils import make_plane
-from isaaclab.utils.math import convert_quat, quat_apply, quat_apply_yaw
+from isaaclab.utils.math import convert_quat, quat_apply, quat_apply_yaw, quat_mul
 from isaaclab.utils.warp import convert_to_warp_mesh, raycast_mesh
 
-from ..sensor_base import SensorBase
-from .ray_caster_data import RayCasterData
+from isaaclab.sensors.sensor_base import SensorBase
+from isaaclab.sensors.ray_caster.ray_caster_data import RayCasterData
 
 if TYPE_CHECKING:
     from .ray_caster_cfg import RayCasterCfg
@@ -74,6 +74,7 @@ class RayCaster(SensorBase):
         self._data = RayCasterData()
         # the warp meshes used for raycasting.
         self.meshes: dict[str, wp.Mesh] = {}
+        self._pose_bindings = {}
         # Dynamic mesh support - additional variables for efficient updates
         self.combined_mesh: wp.Mesh | None = None
         self.all_mesh_view: XFormPrim | None = None
@@ -143,6 +144,7 @@ class RayCaster(SensorBase):
 
     def _initialize_impl(self):
         super()._initialize_impl()
+        self._pose_bindings.clear()
         # obtain global simulation view
         self._physics_sim_view = SimulationManager.get_physics_sim_view()
         # check if the prim at path is an articulated or rigid prim
@@ -562,7 +564,7 @@ class RayCaster(SensorBase):
         """Fills the buffers of the sensor data."""
         # obtain the poses of the sensors
         if isinstance(self._view, XFormPrim):
-            pos_w, quat_w = self._view.get_world_poses(env_ids)
+            pos_w, quat_w = self._get_live_poses(self._view, env_ids)
         elif isinstance(self._view, physx.ArticulationView):
             pos_w, quat_w = self._view.get_root_transforms()[env_ids].split([3, 4], dim=-1)
             quat_w = convert_quat(quat_w, to="wxyz")
@@ -1130,8 +1132,8 @@ class RayCaster(SensorBase):
         try:
             # Get current world poses for all mesh instances
             num_mesh_instances = len(self.mesh_instance_indices)
-            current_poses, current_quats = self.all_mesh_view.get_world_poses(
-                torch.arange(num_mesh_instances, device=self.device)
+            current_poses, current_quats = self._get_live_poses(
+                self.all_mesh_view, torch.arange(num_mesh_instances, device=self.device)
             )
             
             # Convert to torch tensors if needed
@@ -1162,7 +1164,7 @@ class RayCaster(SensorBase):
             self.combined_mesh.refit()
             
         except Exception as e:
-            omni.log.warn(f"Failed to update combined mesh efficiently: {str(e)}")
+            raise RuntimeError("Dynamic mesh update failed; refusing stale LiDAR observations") from e
 
     def _update_env_dynamic_mesh_efficiently(self):
         """Efficiently update the env dynamic mesh using vectorized operations."""
@@ -1177,8 +1179,8 @@ class RayCaster(SensorBase):
 
         try:
             num_instances = len(self.env_mesh_instance_indices)
-            current_poses, current_quats = self.all_env_dynamic_mesh_view.get_world_poses(
-                torch.arange(num_instances, device=self.device)
+            current_poses, current_quats = self._get_live_poses(
+                self.all_env_dynamic_mesh_view, torch.arange(num_instances, device=self.device)
             )
 
             if isinstance(current_poses, np.ndarray):
@@ -1200,7 +1202,56 @@ class RayCaster(SensorBase):
             self.env_dynamic_mesh.refit()
 
         except Exception as e:
-            omni.log.warn(f"Failed to update env dynamic mesh efficiently: {str(e)}")
+            raise RuntimeError("Environment mesh update failed; refusing stale LiDAR observations") from e
+
+    def _get_live_poses(self, view, env_ids):
+        """Follow physical ancestors, including mesh children of articulation links.
+
+        Sim 5.0 may leave both USD and Fabric child Xforms at their initial pose.
+        Rigid-body tensors remain current even when rendering is disabled.
+        """
+        key = id(view)
+        if key not in self._pose_bindings:
+            cache = UsdGeom.XformCache()
+            mesh_ids, body_paths, offsets, rotations = [], [], [], []
+            for index, path in enumerate(view.prim_paths):
+                prim = prim_utils.get_prim_at_path(path)
+                body = prim
+                while body.IsValid() and not body.HasAPI(UsdPhysics.RigidBodyAPI):
+                    body = body.GetParent()
+                if not body.IsValid():
+                    continue
+                relative = cache.GetLocalToWorldTransform(prim) * cache.GetLocalToWorldTransform(body).GetInverse()
+                rotation = relative.ExtractRotationQuat()
+                mesh_ids.append(index)
+                body_paths.append(str(body.GetPath()))
+                offsets.append(list(relative.ExtractTranslation()))
+                rotations.append([rotation.GetReal(), *rotation.GetImaginary()])
+            binding = None
+            if body_paths:
+                physics = self._physics_sim_view.create_rigid_body_view(list(dict.fromkeys(body_paths)))
+                order = {path: index for index, path in enumerate(physics.prim_paths)}
+                binding = (physics, torch.tensor(mesh_ids, device=self.device),
+                    torch.tensor([order[path] for path in body_paths], device=self.device),
+                    torch.tensor(offsets, device=self.device, dtype=torch.float32),
+                    torch.tensor(rotations, device=self.device, dtype=torch.float32))
+            self._pose_bindings[key] = binding
+        binding = self._pose_bindings[key]
+        if binding is not None and len(binding[1]) == view.count:
+            pos = torch.empty((view.count, 3), device=self.device)
+            quat = torch.empty((view.count, 4), device=self.device)
+        else:
+            pos, quat = view.get_world_poses(usd=True)
+            pos, quat = pos.clone(), quat.clone()
+        if binding is not None:
+            physics, mesh_ids, body_ids, offset, rotation = binding
+            transforms = physics.get_transforms()[body_ids]
+            body_quat = convert_quat(transforms[:, 3:7], to="wxyz")
+            pos[mesh_ids] = transforms[:, :3] + quat_apply(body_quat, offset)
+            quat[mesh_ids] = quat_mul(body_quat, rotation)
+        if env_ids is None or isinstance(env_ids, slice):
+            return pos, quat
+        return pos[env_ids], quat[env_ids]
             
             
             

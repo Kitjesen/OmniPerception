@@ -30,6 +30,9 @@ class LidarSensorData(RayCasterData):
     like distances and point clouds.
     """
 
+    valid_mask: torch.Tensor = None
+    """True for finite, in-range returns that survived dropout, shape (E, N)."""
+
     distances: torch.Tensor = None
     """Distance measurements for each ray in meters. Shape is (num_instances, num_rays)."""
     
