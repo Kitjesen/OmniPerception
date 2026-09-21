@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-22",
+  "platform": {
+    "isaac_sim": "5.0.0.0",
+    "isaac_lab_checkout": "2.2.1",
+    "python": "3.11.14",
+    "torch": "2.7.0+cu128",
+    "warp_loaded": "1.7.1",
+    "gpu": "RTX 3090 (shared)"
+  },
+  "geometry": {
+    "overlap": [
+      2.5,
+      0.5
+    ],
+    "size": [
+      2.5,
+      2.0
+    ],
+    "transform": [
+      2.5,
+      2.5
+    ],
+    "capsule": [
+      2.5006418228149414,
+      1.5000001192092896
+    ],
+    "cone": [
+      2.75,
+      1.9999998807907104
+    ],
+    "cylinder": [
+      2.5,
+      1.9999998807907104
+    ],
+    "refresh": [
+      2.5,
+      1.5
+    ],
+    "missing_path": "rejected"
+  },
+  "batch": {
+    "num_envs": 32,
+    "rays_per_env": 500,
+    "measured_steps": 30,
+    "sensor_wall_ms_median": 41.53579007834196,
+    "sensor_wall_ms_p95": 74.90389607846737,
+    "torch_peak_allocated_mib": 19.8759765625,
+    "warp_runtime": "1.7.1",
+    "finite_observations": true,
+    "note": "Shared busy GPU; excludes physics and policy; Torch memory excludes Warp/Sim allocations"
+  },
+  "limits": [
+    "Not full PPO training or 4096-environment validation.",
+    "Timing excludes physics and policy; GPU was shared.",
+    "Torch memory excludes Warp and Isaac Sim allocations.",
+    "Articulated self-occlusion and deformable geometry not validated."
+  ]
+}

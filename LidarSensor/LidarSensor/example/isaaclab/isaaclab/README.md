@@ -1,5 +1,10 @@
 # LiDAR Sensor Integration for IsaacLab
 
+> Kitjesen fork: use [the isolated source integration](../../../../../docs/isaacsim5_rl.md).
+> The legacy installer below is disabled because it overwrites installed Isaac Lab
+> modules. `LidarSensor` now uses per-environment instance geometry; the retained
+> standalone RayCaster/Camera examples do not use that backend.
+
 This directory contains all the necessary files to integrate LiDAR sensors (including Livox sensors) into IsaacLab. The implementation supports both traditional grid-based LiDAR patterns and realistic Livox scan patterns using precomputed `.npy` files.
 
 ## 📁 Directory Structure

@@ -10,6 +10,7 @@ from isaaclab.utils.math import quat_apply, quat_apply_inverse
 from .ray_caster import RayCaster
 from .lidar_sensor_data import LidarSensorData
 from .ray_caster.patterns.livox_sequence import LivoxSequence, load_directions
+from .isolated_geometry import IsolatedGeometry
 
 
 class LidarSensor(RayCaster):
@@ -27,6 +28,22 @@ class LidarSensor(RayCaster):
         super().__init__(cfg)
         self._data = LidarSensorData()
         self._sequence = None
+
+    def _initialize_enhanced_warp_meshes(self):
+        self._geometry = IsolatedGeometry(self)
+        self.meshes = {str(i): mesh for i, mesh in enumerate(self._geometry.meshes)}
+
+    def _initialize_env_dynamic_meshes(self):
+        # Both path lists are handled together with explicit environment ownership.
+        pass
+
+    def _cast_rays(self, ray_starts_w, ray_directions_w, env_ids):
+        return self._geometry.cast(ray_starts_w, ray_directions_w, env_ids)
+
+    def refresh_geometry(self):
+        """Rebuild after changing mesh size/topology at reset; motion needs no rebuild."""
+        self._pose_bindings.clear()
+        self._initialize_enhanced_warp_meshes()
 
     def _initialize_rays_impl(self):
         super()._initialize_rays_impl()

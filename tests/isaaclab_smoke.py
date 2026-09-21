@@ -46,7 +46,7 @@ mid = LidarSensor(LidarSensorCfg(prim_path='/World/envs/env_.*/Sensor', mesh_pri
     max_distance=10.0, update_period=0.01,
     pattern_cfg=LivoxPatternCfg(sensor_type='mid360', samples=2000, downsample=4)))
 sim.reset()
-assert mid.env_dynamic_mesh is not None, 'Configured dynamic meshes must be initialized'
+assert len(mid._geometry.meshes) >= 3, 'Configured ground and dynamic meshes must be initialized'
 view = SimulationManager.get_physics_sim_view().create_rigid_body_view('/World/envs/env_*/Box')
 indices = torch.arange(2, device=args.device, dtype=torch.int32)
 velocity = torch.zeros((2, 6), device=args.device)
@@ -72,7 +72,7 @@ assert torch.max(torch.abs(rotated.data.pointcloud[..., 1:])) < 1e-4
 
 # Compare with the upstream USD read path on the same running scene.
 live_reader = sensor._get_live_poses
-sensor._get_live_poses = lambda view, ids: view.get_world_poses(indices=ids.to(torch.int32), usd=True)
+sensor._get_live_poses = lambda view, ids: view.get_world_poses(indices=None if ids is None else ids.to(torch.int32), usd=True)
 stale_start = scan()
 for _ in range(10):
     stale_end = scan()
