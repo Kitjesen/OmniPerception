@@ -28,6 +28,11 @@ class LidarSensorCfg(RayCasterCfg):
 
     class_type: type = LidarSensor
     ray_alignment: Literal["base", "yaw", "world"] = "base"
+    mesh_exclude_paths: list[str] = []
+    """Exact subtree paths omitted from ray queries, e.g. the emitting LiDAR housing.
+
+    Supports {ENV_REGEX_NS}. Other robot geometry remains an occluder.
+    """
     # LiDAR-specific timing parameters
     update_frequency: float = 50.0
     """LiDAR update frequency in Hz. Defaults to 50.0 Hz."""
