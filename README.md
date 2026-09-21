@@ -1,3 +1,8 @@
+> **Kitjesen fork:** for Isaac Sim 5.0 / Isaac Lab 2.2.1, use the
+> [isolated RL sensor integration](docs/isaacsim5_rl.md). It does not replace
+> installed Isaac Lab files. The upstream installation examples below are retained
+> for reference, not the recommended installation path for this adaptation.
+
 <div align="center">
 
 # 🌟 **OmniPerception** 
@@ -122,7 +127,7 @@
 ### **Prerequisites**
 - Python 3.8+
 - CUDA 11.0+ (for GPU acceleration)
-- One of: IsaacGym, Genesis, Mujoco, or Isaac Sim (<= 4.5). Note: Isaac Sim 5.0 don't spported.
+- Upstream integration targets Isaac Sim <= 4.5. This fork adds an isolated Isaac Sim 5.0 / Isaac Lab 2.2.1 adaptation; see [compatibility tests and RL input limitations](docs/isaacsim5_rl.md). Large-scale training is not yet validated.
 
 ### **Quick Install**
 ```bash

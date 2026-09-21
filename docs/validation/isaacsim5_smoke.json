@@ -1,0 +1,20 @@
+{
+  "date": "2026-09-22",
+  "isaac_sim": "5.0.0.0",
+  "isaac_lab_checkout": "2.2.1",
+  "python": "3.11.14",
+  "torch": "2.7.0+cu128",
+  "warp": "1.9.0",
+  "gpu": "RTX 3090",
+  "test": "tests/isaaclab_smoke.py --headless --device cuda:0",
+  "rendering": false,
+  "num_envs": 2,
+  "moving_box_delta_m": [0.19999980926513672, 0.19999980926513672],
+  "usd_stale_delta_m": [0.0, 0.0],
+  "observation_shape": [2, 500, 4],
+  "partial_reset": "passed",
+  "encoder_backward": "passed",
+  "mount_transform": "passed",
+  "dropout": "passed",
+  "scope": "Sensor correctness smoke test; not PPO training or large-scale throughput validation"
+}

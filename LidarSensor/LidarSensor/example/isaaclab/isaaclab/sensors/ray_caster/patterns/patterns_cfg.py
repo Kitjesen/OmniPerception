@@ -266,3 +266,6 @@ class LivoxPatternCfg(PatternBaseCfg):
     
     rolling_window_start: int = 0
     """Starting index for rolling window sampling from pattern files. Defaults to 0."""
+
+    pattern_path: str | None = None
+    """Explicit angle file; otherwise use this source checkout's scan_mode data."""
