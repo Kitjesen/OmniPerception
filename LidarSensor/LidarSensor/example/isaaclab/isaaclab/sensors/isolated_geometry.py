@@ -97,6 +97,13 @@ class IsolatedGeometry:
         sensor_paths = list(sensor._view.prim_paths)
         owners = [environment_root(path) for path in sensor_paths]
         roots = list(dict.fromkeys(owner for owner in owners if owner is not None))
+        excluded = []
+        for path in sensor.cfg.mesh_exclude_paths:
+            expanded = [path.replace("{ENV_REGEX_NS}", root) for root in roots] if "{ENV_REGEX_NS}" in path else [path]
+            for item in expanded:
+                if not get_prim_at_path(item).IsValid():
+                    raise ValueError(f"Excluded LiDAR geometry does not exist: {item}")
+                excluded.append(item.rstrip("/"))
         paths = list(sensor.cfg.mesh_prim_paths)
         for pattern in sensor.cfg.dynamic_env_mesh_prim_paths:
             if "{ENV_REGEX_NS}" in pattern:
@@ -110,14 +117,18 @@ class IsolatedGeometry:
                 raise ValueError(f"Configured LiDAR path matched no prims: {pattern}")
             for root in matches:
                 found = False
-                for prim in Usd.PrimRange(root):
+                for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies()):
                     if prim.IsA(UsdGeom.Gprim):
+                        path = str(prim.GetPath())
+                        if any(path == item or path.startswith(item + "/") for item in excluded):
+                            continue
                         geometries[str(prim.GetPath())] = prim
                         found = True
                 if not found:
                     raise ValueError(f"No geometry under configured LiDAR path: {root.GetPath()}")
         if not geometries:
             raise ValueError("LiDAR requires explicitly configured geometry")
+        self.mesh_paths = tuple(geometries)
         self.meshes, anchors, mesh_owners = [], [], []
         for path, prim in geometries.items():
             vertices, indices = raw_mesh(prim)
@@ -128,6 +139,10 @@ class IsolatedGeometry:
                 anchor = anchor.GetParent()
             if not anchor.IsValid():
                 anchor = prim
+                # Isaac views cannot target an instance proxy. Bake the child
+                # transform relative to its editable instance root instead.
+                while anchor.IsInstanceProxy():
+                    anchor = anchor.GetParent()
             # Gf matrices use row vectors; extract a rigid pose and bake scale/shear
             # and the full descendant transform into local vertices exactly once.
             world = cache.GetLocalToWorldTransform(anchor)

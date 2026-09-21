@@ -24,14 +24,29 @@ def make_sensor(case):
         vertical_fov_deg_min=0, vertical_fov_deg_max=0)
     return LidarSensor(LidarSensorCfg(prim_path=f'/World/{case}/env_.*/Sensor', mesh_prim_paths=[],
         dynamic_env_mesh_prim_paths=['{ENV_REGEX_NS}/Object'], max_distance=10.,
+        mesh_exclude_paths=['{ENV_REGEX_NS}/Object/Emitter'] if case == 'emitter' else [],
         update_period=0.01, pattern_cfg=pattern))
 
-for case in ('overlap', 'size', 'transform', 'capsule', 'cone', 'cylinder'):
+create_prim('/World/InstanceTemplate', 'Xform')
+template = create_prim('/World/InstanceTemplate/mesh', 'Cube')
+UsdGeom.Cube(template).GetSizeAttr().Set(1.0)
+
+for case in ('overlap', 'size', 'transform', 'capsule', 'cone', 'cylinder', 'instance', 'emitter'):
     for env in range(2):
         root = f'/World/{case}/env_{env}'
         create_prim(root, 'Xform')
         create_prim(root + '/Sensor', 'Xform', translation=(0, 1 if case == 'transform' else 0, 0))
-        if case == 'transform':
+        if case == 'emitter':
+            create_prim(root + '/Object', 'Xform')
+            prim = create_prim(root + '/Object/Emitter', 'Cube')
+            UsdGeom.Cube(prim).GetSizeAttr().Set(.2)
+            prim = create_prim(root + '/Object/Body', 'Cube', translation=(3, 0, 0))
+            UsdGeom.Cube(prim).GetSizeAttr().Set(1.0)
+        elif case == 'instance':
+            prim = create_prim(root + '/Object', 'Xform', translation=(3, 0, 0))
+            prim.GetReferences().AddInternalReference('/World/InstanceTemplate')
+            prim.SetInstanceable(True)
+        elif case == 'transform':
             create_prim(root + '/Object', 'Xform', translation=(3, 0, 0),
                         orientation=(math.sqrt(.5), 0, 0, math.sqrt(.5)))
             prim = create_prim(root + '/Object/mesh', 'Cube', translation=(1, 0, 0), scale=(2, 1, .5))
@@ -52,12 +67,21 @@ sim.reset()
 sim.step(render=False)
 results = {}
 expected = {'overlap': [2.5, .5], 'size': [2.5, 2.], 'transform': [2.5, 2.5],
-            'capsule': [2.5, 1.5], 'cone': [2.75, 2.], 'cylinder': [2.5, 2.]}
+            'capsule': [2.5, 1.5], 'cone': [2.75, 2.], 'cylinder': [2.5, 2.],
+            'instance': [2.5, 2.5], 'emitter': [2.5, 2.5]}
 for case, sensor in sensors.items():
     sensor.update(.01, force_recompute=True)
     actual = sensor.data.distances.flatten()
     assert torch.allclose(actual, torch.tensor(expected[case], device=args.device), atol=.025), (case, actual)
     results[case] = actual.tolist()
+
+instance = get_prim_at_path('/World/instance/env_1/Object')
+for op in UsdGeom.Xformable(instance).GetOrderedXformOps():
+    if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+        op.Set((4., 0., 0.))
+sensors['instance'].update(.01, force_recompute=True)
+assert torch.allclose(sensors['instance'].data.distances.flatten(), torch.tensor([2.5, 3.5], device=args.device))
+results['instance_motion'] = sensors['instance'].data.distances.flatten().tolist()
 
 # Reset-time geometry randomization is explicit and rebuilds the changed shape.
 UsdGeom.Cube(get_prim_at_path('/World/size/env_1/Object')).GetSizeAttr().Set(3.0)
