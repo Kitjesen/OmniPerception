@@ -14,7 +14,10 @@ The fix resolves each mesh's rigid-body ancestor once, caches its relative
 transform, and reads current PhysX poses at every sensor update. Articulation
 link descendants use the same rigid-body ancestry mechanism; robot-specific
 articulation validation remains to be performed. Non-physical prims still use USD.
-Mesh topology and mesh-to-body transforms must remain fixed during a run.
+Rigid motion only updates instance poses. Each mesh is triangulated and its full
+USD transform is baked into the rigid-body frame once, including descendant
+translation, rotation and scale. Ray queries transform rays into that frame;
+no per-step vertex expansion or BVH refit is needed.
 
 ## Scene configuration
 
@@ -66,10 +69,22 @@ scan uses one physical pose, so within-scan motion distortion is not modeled.
 - No random-ray fallback when pattern data is missing; startup fails explicitly.
 - Sequence cursors and reset are per environment, not shared global scan time.
 - Mesh-update errors stop the run instead of silently returning stale geometry.
-- The inherited mesh backend combines environments. **Dense environment layouts
-  are not isolated.** Keep all foreign geometry outside every sensor's max range,
-  including possible robot/obstacle motion. The smoke test uses 40 m spacing and
-  10 m range. This is a small-scale input prototype, not a validated 4,096-env backend.
+- LiDAR uses instance meshes with explicit environment ownership. Paths under
+  `/.../env_N/` belong only to sensors in that environment, even when worlds overlap.
+  Geometry outside all environment roots (for example `/World/ground`) is shared.
+  Both configured path lists use this rule; putting environment geometry in
+  `mesh_prim_paths` does not make it global. Canonical Isaac Lab `env_N` naming is required.
+- Every instance's actual geometry is read, not copied from env_0. After changing
+  USD size, scale, local offset or topology at reset, call `sensor.refresh_geometry()`
+  before the next sensor update. Ordinary rigid-body motion needs no refresh.
+  Skinning, deformable meshes and in-scan motion remain unsupported.
+- Cube, Sphere, Capsule, Cone, Cylinder, Plane and triangle/quad Mesh inputs are
+  supported. Curved primitives are tessellated approximations. Missing paths,
+  empty geometry, unsupported primitives and polygons requiring triangulation
+  raise an error rather than silently removing obstacles or inventing a ground plane.
+- These changes apply to this fork's `LidarSensor`. The legacy standalone
+  RayCaster/Camera example backend is not the isolated LiDAR backend. Use Isaac
+  Lab's own camera sensors for RGB/depth. The overwrite-based installer is disabled.
 - Angular noise and legacy range normalization are rejected rather than ignored;
   `get_observation()` supplies explicit normalization. Range noise and dropout are supported.
 - No changes are made to an existing `robot_lab` policy, rewards, checkpoints or
@@ -84,6 +99,8 @@ From this fork's root, using the Python environment that already runs Isaac Lab:
 export PYTHONPATH="$PWD/LidarSensor:${PYTHONPATH:-}"
 python tests/test_livox_sequence.py
 python tests/isaaclab_smoke.py --headless --device cuda:0
+python tests/isaaclab_geometry_smoke.py --headless --device cuda:0
+python tests/isaaclab_lidar_batch.py --headless --device cuda:0 --num_envs 32
 ```
 
 The smoke test moves two physical boxes without rendering and compares live
@@ -93,4 +110,12 @@ steps. This backward-pass check is not a learned locomotion policy or PPO result
 
 Test platform: Isaac Sim 5.0.0.0, Isaac Lab checkout VERSION 2.2.1
 (Python package metadata 0.46.2), Python 3.11.14, PyTorch 2.7.0+cu128,
-Warp 1.9.0, RTX 3090, Ubuntu 22.04. Recorded on 2026-09-22.
+RTX 3090, Ubuntu 22.04. The standalone environment metadata reports Warp 1.9.0,
+but Isaac Sim loads its bundled Warp 1.7.1 after startup. Recorded on 2026-09-22.
+
+The geometry regression puts two environments at identical coordinates and
+checks different obstacle ranges, different sizes, local translation/rotation/
+scale, primitive axes, reset-time geometry refresh and invalid-path rejection.
+The batch script checks finite and equivalent observations in translated identical
+environments. Its timing excludes physics and policy, runs on a shared GPU, and
+does not establish full-training throughput or capacity at 4,096 environments.

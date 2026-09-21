@@ -620,6 +620,16 @@ class RayCaster(SensorBase):
         else:
             raise RuntimeError(f"Unsupported ray_alignment type: {self.cfg.ray_alignment}.")
 
+        final_dist = self._cast_rays(ray_starts_w, ray_directions_w, env_ids)
+
+        # Compute final hit points. For missed rays, final_dist stays inf and the result becomes inf as well.
+        final_hits = ray_starts_w + final_dist.unsqueeze(-1) * ray_directions_w
+        self._data.ray_hits_w[env_ids] = final_hits
+
+        # apply vertical drift to ray starting position in ray caster frame
+        self._data.ray_hits_w[env_ids, :, 2] += self.ray_cast_drift[env_ids, 2].unsqueeze(-1)
+
+    def _cast_rays(self, ray_starts_w, ray_directions_w, env_ids):
         # ray cast and store the hits (dual raycast with distance merge)
         # Use combined mesh if available for dynamic support, otherwise use original mesh
         if self.combined_mesh is not None:
@@ -647,12 +657,7 @@ class RayCaster(SensorBase):
         else:
             final_dist = dist1
 
-        # Compute final hit points. For missed rays, final_dist stays inf and the result becomes inf as well.
-        final_hits = ray_starts_w + final_dist.unsqueeze(-1) * ray_directions_w
-        self._data.ray_hits_w[env_ids] = final_hits
-
-        # apply vertical drift to ray starting position in ray caster frame
-        self._data.ray_hits_w[env_ids, :, 2] += self.ray_cast_drift[env_ids, 2].unsqueeze(-1)
+        return final_dist
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         # set visibility of markers
